@@ -16,10 +16,6 @@ export class QueueService {
     return this.queue.includes(clientId);
   }
 
-  hasPlayerWaiting(): boolean {
-    return this.queue.length > 0;
-  }
-
   getOpponent(): string | undefined {
     return this.queue.shift();
   }
