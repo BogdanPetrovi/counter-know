@@ -45,6 +45,17 @@ export class GameGateway implements OnGatewayDisconnect {
     });
   }
 
+  @SubscribeMessage('leave_queue')
+  handleLeaveQueue(client: Socket) {
+    if(!this.queueService.isInQueue(client.id)) {
+      return client.emit('queue_error', {
+        message: 'You are not in the queue.'
+      });
+    }
+
+    this.queueService.remove(client.id);
+  }
+
   handleDisconnect(client: Socket) {
     this.queueService.remove(client.id);
 

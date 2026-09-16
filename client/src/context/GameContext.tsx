@@ -31,6 +31,7 @@ interface GameContextValue {
   game: GameRoom | null;
   error: string | null;
   joinQueue: () => void;
+  leaveQueue: () => void;
   leaveGame: () => void;
 }
 
@@ -100,6 +101,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     socket.emit("join_queue");
   }, []);
 
+  const leaveQueue = useCallback(() => {
+    const socket = getSocket();
+    if (!socket.connected) return;
+    socket.emit("leave_queue");
+    setStatus("idle");
+  }, []);
+
   const leaveGame = useCallback(() => {
     setGame(null);
     setError(null);
@@ -109,7 +117,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <GameContext.Provider
-      value={{ status, socketId, game, error, joinQueue, leaveGame }}
+      value={{ status, socketId, game, error, joinQueue, leaveQueue, leaveGame }}
     >
       {children}
     </GameContext.Provider>

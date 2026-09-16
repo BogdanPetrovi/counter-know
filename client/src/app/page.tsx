@@ -5,7 +5,7 @@ import { JoinQueueButton } from "@/components/home/JoinQueueButton";
 import { QueueStatus } from "@/components/home/QueueStatus";
 
 export default function Home() {
-  const { status, error, joinQueue } = useGame();
+  const { status, error, joinQueue, leaveQueue } = useGame();
   const searching = status === "searching";
   const connecting = status === "connecting";
 
@@ -15,13 +15,14 @@ export default function Home() {
         Find opponent
       </h1>
 
-      <JoinQueueButton
-        searching={searching}
-        connecting={connecting}
-        onClick={joinQueue}
-      />
-
-      <QueueStatus searching={searching} error={error} />
+      <div className="mt-10 w-full max-w-72">
+        <JoinQueueButton
+          searching={searching}
+          connecting={connecting}
+          onClick={joinQueue}
+        />
+        <QueueStatus searching={searching} error={error} onLeave={leaveQueue} />
+      </div>
     </main>
   );
 }
