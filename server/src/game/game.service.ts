@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { UUID } from 'crypto';
+import { PRO_PLAYERS } from '../common/data/pro-players.js';
 
 export interface GameRoom {
   id: UUID,
   players: string[],
   createdAt: Date,
-  state: "starting" | "game-1"
+  state: "starting" | "game-1",
+  ready: Set<string>
 }
 
 @Injectable()
@@ -20,7 +22,8 @@ export class GameService {
       id,
       players: [player1, player2],
       createdAt: new Date(),
-      state: "starting" as const
+      state: "starting" as const,
+      ready: new Set<string>()
     };
 
     this.games.set(id, room);
@@ -43,5 +46,49 @@ export class GameService {
       room.players.forEach((p) => this.userGame.delete(p));
       this.games.delete(gameId);
     }
+  }
+
+  markReady(gameId: UUID, userId: string): boolean {
+    const game = this.games.get(gameId);
+    if(!game || game.state !== 'starting') {
+      return false;
+    }
+
+    game.ready.add(userId);
+    if(game.ready.size === 2) {
+      return true;
+    }
+
+    return false;
+  }
+
+  startGameOne(gameId: UUID): Array<string> {
+    const game = this.games.get(gameId);
+    if(!game) {
+      return []
+    }
+    game.state = 'game-1';
+
+    const playersArrayLength = PRO_PLAYERS.length;
+    const randomNumber = Math.floor(Math.random() * playersArrayLength);
+    const randomPlayer = PRO_PLAYERS[randomNumber];
+
+    const charArr = [...randomPlayer];
+
+    const randomCharNumber = 12 - charArr.length;
+    const chars = 'abcdefghijklmnopqrstuvwxyz';
+    for (let index = 0; index < randomCharNumber; index++) {
+      const randomIndex = Math.floor(Math.random() * chars.length);
+      charArr.push(chars[randomIndex]);
+    }
+
+    const finalArr = [];
+    for(let index = 0; index < 12; index++) {
+      const randomIndex = Math.floor(Math.random() * charArr.length);
+      const char = charArr.splice(randomIndex, 1)[0];
+      finalArr.push(char.toUpperCase());
+    }
+
+    return finalArr;
   }
 }

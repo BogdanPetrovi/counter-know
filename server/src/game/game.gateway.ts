@@ -56,6 +56,28 @@ export class GameGateway implements OnGatewayDisconnect {
     this.queueService.remove(client.id);
   }
 
+  @SubscribeMessage('player_ready')
+  handlePlayerReady(client: Socket) {
+    if(this.queueService.isInQueue(client.id)) {
+      return client.emit('queue_error', {
+        message: 'You are in the queue.'
+      });
+    }
+
+    const roomId = this.gameService.getRoomIdForPlayer(client.id);
+    if(!roomId) {
+      return client.emit('queue_error', {
+        message: 'You are not in a game.'
+      });
+    }
+
+    const bothReady = this.gameService.markReady(roomId, client.id);
+    if(bothReady) {
+      const char = this.gameService.startGameOne(roomId);
+      this.server.to(roomId).emit('game_one_start', { char });
+    }
+  }
+
   handleDisconnect(client: Socket) {
     this.queueService.remove(client.id);
 
