@@ -15,13 +15,13 @@ export class GameGateway implements OnGatewayDisconnect {
   @SubscribeMessage('join_queue') 
   handleJoinQueue(client: Socket) {
     if(this.queueService.isInQueue(client.id)) {
-      return client.emit('queue-error', {
+      return client.emit('queue_error', {
         message: 'You are already in the queue.'
       });
     }
 
     if(this.gameService.isInGame(client.id)) {
-      return client.emit('queue-error', {
+      return client.emit('queue_error', {
         message: 'You are already in the game.'
       });
     }
@@ -50,7 +50,7 @@ export class GameGateway implements OnGatewayDisconnect {
 
     const roomId = this.gameService.getRoomIdForPlayer(client.id);
     if(roomId) {
-      this.server.to(roomId).emit('opponent-disconnected', {
+      this.server.to(roomId).emit('opponent_disconnected', {
         message: "Your opponent has left the game."
       });
       this.gameService.removeGame(roomId);
