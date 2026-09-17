@@ -23,15 +23,19 @@ export type GameStatus =
   | "idle"
   | "searching"
   | "matched"
+  | "ready"
+  | "playing"
   | "opponent_left";
 
 interface GameContextValue {
   status: GameStatus;
   socketId: string | null;
   game: GameRoom | null;
+  chars: string[] | null;
   error: string | null;
   joinQueue: () => void;
   leaveQueue: () => void;
+  ready: () => void;
   leaveGame: () => void;
 }
 
@@ -42,6 +46,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<GameStatus>("connecting");
   const [socketId, setSocketId] = useState<string | null>(null);
   const [game, setGame] = useState<GameRoom | null>(null);
+  const [chars, setChars] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -56,6 +61,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const onDisconnect = () => {
       setSocketId(null);
       setGame(null);
+      setChars(null);
       setStatus("connecting");
     };
 
@@ -66,9 +72,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     const onMatchFound = (payload: GameRoom) => {
       setGame(payload);
+      setChars(null);
       setError(null);
       setStatus("matched");
       router.push("/game");
+    };
+
+    const onGameOneStart = (payload: { char: string[] }) => {
+      setChars(payload.char);
+      setGame((g) => (g ? { ...g, state: "game-1" } : g));
+      setStatus("playing");
     };
 
     const onOpponentDisconnected = () => {
@@ -79,6 +92,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     socket.on("disconnect", onDisconnect);
     socket.on("queue_error", onQueueError);
     socket.on("match_found", onMatchFound);
+    socket.on("game_one_start", onGameOneStart);
     socket.on("opponent_disconnected", onOpponentDisconnected);
 
     if (socket.connected) onConnect();
@@ -88,6 +102,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       socket.off("disconnect", onDisconnect);
       socket.off("queue_error", onQueueError);
       socket.off("match_found", onMatchFound);
+      socket.off("game_one_start", onGameOneStart);
       socket.off("opponent_disconnected", onOpponentDisconnected);
     };
   }, [router]);
@@ -97,6 +112,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (!socket.connected) return;
     setError(null);
     setGame(null);
+    setChars(null);
     setStatus("searching");
     socket.emit("join_queue");
   }, []);
@@ -108,8 +124,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setStatus("idle");
   }, []);
 
+  const ready = useCallback(() => {
+    const socket = getSocket();
+    if (!socket.connected) return;
+    setStatus((s) => (s === "matched" ? "ready" : s));
+    socket.emit("player_ready");
+  }, []);
+
   const leaveGame = useCallback(() => {
     setGame(null);
+    setChars(null);
     setError(null);
     setStatus("idle");
     router.push("/");
@@ -117,7 +141,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <GameContext.Provider
-      value={{ status, socketId, game, error, joinQueue, leaveQueue, leaveGame }}
+      value={{
+        status,
+        socketId,
+        game,
+        chars,
+        error,
+        joinQueue,
+        leaveQueue,
+        ready,
+        leaveGame,
+      }}
     >
       {children}
     </GameContext.Provider>

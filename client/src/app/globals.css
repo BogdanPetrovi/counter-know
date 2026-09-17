@@ -153,6 +153,23 @@ body {
   animation-delay: var(--d, 0s);
 }
 
+/* Intro block leaving before the round starts */
+@keyframes fade-out-up {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+
+.leave {
+  animation: fade-out-up 0.45s cubic-bezier(0.4, 0, 0.6, 1) forwards;
+  pointer-events: none;
+}
+
 .rule {
   transform-origin: left;
   transform: scaleX(0);
