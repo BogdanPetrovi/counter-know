@@ -3,12 +3,23 @@ import { randomUUID } from 'crypto';
 import type { UUID } from 'crypto';
 import { PRO_PLAYERS } from '../common/data/pro-players.js';
 
+export interface GameOneRound {
+  answer: string,
+  letters: string[],
+  startedAt: Date
+}
+
+export interface GameOneState {
+  rounds: GameOneRound[]
+}
+
 export interface GameRoom {
   id: UUID,
   players: string[],
   createdAt: Date,
   state: "starting" | "game-1",
-  ready: Set<string>
+  ready: Set<string>,
+  gameOne?: GameOneState
 }
 
 @Injectable()
@@ -89,6 +100,19 @@ export class GameService {
       finalArr.push(char.toUpperCase());
     }
 
+    game.gameOne = {
+      rounds: [{
+        answer: randomPlayer,
+        letters: finalArr,
+        startedAt: new Date()
+      }]
+    };
+
     return finalArr;
+  }
+
+  getCurrentGameOneRound(gameId: UUID): GameOneRound | undefined {
+    const game = this.games.get(gameId);
+    return game?.gameOne?.rounds.at(-1);
   }
 }
