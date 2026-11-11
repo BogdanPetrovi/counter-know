@@ -11,7 +11,8 @@ const READY_AFTER_MS = 4000;
 
 export default function GamePage() {
   const router = useRouter();
-  const { status, game, chars, socketId, ready, leaveGame } = useGame();
+  const { status, game, round, roundResult, socketId, ready, submitAnswer, leaveGame } =
+    useGame();
   // Intro stays mounted until its exit animation finishes, then the round takes its place.
   const [introGone, setIntroGone] = useState(false);
 
@@ -29,7 +30,7 @@ export default function GamePage() {
 
   const opponentLeft = status === "opponent_left";
   const waiting = status === "ready";
-  const playing = status === "playing" && chars !== null;
+  const playing = status === "playing" && round !== null;
   const introLeaving = playing && !introGone;
   const selfId = socketId ?? game.players[0];
   const opponentId = game.players.find((p) => p !== selfId) ?? game.players[1];
@@ -76,7 +77,15 @@ export default function GamePage() {
           </div>
         )}
 
-        {introGone && !opponentLeft && <GameOne chars={chars!} />}
+        {introGone && !opponentLeft && round && (
+          <GameOne
+            round={round}
+            result={roundResult}
+            selfId={selfId}
+            opponentId={opponentId}
+            onSubmit={submitAnswer}
+          />
+        )}
 
         {opponentLeft && (
           <div className={`enter ${introGone ? "mt-4" : "mt-14 border-t border-navy-700 pt-8"}`}>

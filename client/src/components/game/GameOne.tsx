@@ -1,60 +1,75 @@
 "use client";
 
-import { useState } from "react";
-import { delay } from "./animation";
-import { LetterTile } from "./LetterTile";
-import { WordInput } from "./WordInput";
+import { useCallback, useState, type AnimationEvent, type CSSProperties } from "react";
+import type {
+  GameOneAnswerResult,
+  GameOnePlayerResult,
+  GameOneRound,
+  GameOneRoundResult,
+} from "@/context/GameContext";
+import { GameOneBoard } from "./GameOneBoard";
+import { GameOneResult } from "./GameOneResult";
+
+const SOLVED_HOLD: CSSProperties = { animationDelay: "0.35s" };
 
 export interface GameOneProps {
-  chars: string[];
+  round: GameOneRound;
+  result: GameOneRoundResult | null;
+  selfId: string;
+  opponentId: string;
+  onSubmit: (answer: string) => Promise<GameOneAnswerResult>;
 }
 
-export function GameOne({ chars }: GameOneProps) {
+interface SelfSolve {
+  answer: string;
+  result: GameOnePlayerResult;
+}
 
-  const [picked, setPicked] = useState<number[]>([]);
+export function GameOne({ round, result, selfId, opponentId, onSubmit }: GameOneProps) {
+  // Set as soon as the server accepts our answer, before the round itself is over.
+  const [selfSolve, setSelfSolve] = useState<SelfSolve | null>(null);
+  // The board plays its exit animation, then the reveal takes its place.
+  const [boardGone, setBoardGone] = useState(false);
 
-  const pick = (index: number) => {
-    setPicked((p) => (p.includes(index) ? p : [...p, index]));
+  const submit = useCallback(
+    async (answer: string) => {
+      const res = await onSubmit(answer);
+      if (res.status === "correct") setSelfSolve({ answer: res.answer, result: res.result });
+      return res;
+    },
+    [onSubmit],
+  );
+
+  const roundOver = result !== null;
+  const boardLeaving = (roundOver || selfSolve !== null) && !boardGone;
+
+  const onBoardLeft = (e: AnimationEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) setBoardGone(true);
   };
 
-  const backspace = () => {
-    setPicked((p) => p.slice(0, -1));
-  };
+  if (boardGone && result) {
+    return (
+      <GameOneResult
+        answer={result.answer}
+        self={result.results.find((r) => r.playerId === selfId)}
+        opponent={result.results.find((r) => r.playerId === opponentId)}
+        round={round}
+      />
+    );
+  }
 
-  const word = picked.map((i) => chars[i]).join("");
+  if (boardGone && selfSolve) {
+    // We solved it; the opponent is still playing until the server ends the round.
+    return <GameOneResult answer={selfSolve.answer} self={selfSolve.result} opponent={null} round={round} />;
+  }
 
   return (
-    <div>
-      <h1
-        className="enter mt-4 text-4xl font-semibold tracking-tight sm:text-5xl"
-        style={delay(0)}
-      >
-        Find the player
-      </h1>
-
-      <p
-        className="enter mt-3 font-mono text-xs uppercase tracking-[0.3em] text-ink-dim"
-        style={delay(0.2)}
-      >
-        Round 01
-      </p>
-
-      <div className="mt-7">
-        <WordInput word={word} delay={0.35} onBackspace={backspace} />
-      </div>
-
-      <div className="mt-5 grid grid-cols-6 gap-2 sm:gap-3">
-        {chars.map((char, index) => (
-          <LetterTile
-            key={index}
-            char={char}
-            index={index}
-            used={picked.includes(index)}
-            delay={0.6 + index * 0.05}
-            onPick={pick}
-          />
-        ))}
-      </div>
+    <div
+      className={boardLeaving ? "leave" : undefined}
+      style={boardLeaving && !roundOver ? SOLVED_HOLD : undefined}
+      onAnimationEnd={onBoardLeft}
+    >
+      <GameOneBoard round={round} over={roundOver} onSubmit={submit} />
     </div>
   );
 }

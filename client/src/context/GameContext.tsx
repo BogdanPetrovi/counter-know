@@ -18,6 +18,33 @@ export interface GameRoom {
   message: string;
 }
 
+export interface GameOneRound {
+  chars: string[];
+  durationMs: number;
+  /** Local `Date.now()` when the server's round timer runs out. Display only. */
+  deadline: number;
+}
+
+export interface GameOnePlayerResult {
+  playerId: string;
+  solved: boolean;
+  first: boolean;
+  points: number;
+  timeMs: number | null;
+}
+
+export interface GameOneRoundResult {
+  answer: string;
+  results: GameOnePlayerResult[];
+}
+
+export type GameOneAnswerResult =
+  | { status: "correct"; answer: string; result: GameOnePlayerResult }
+  | { status: "wrong" }
+  | { status: "rejected"; message: string };
+
+const ANSWER_TIMEOUT_MS = 5000;
+
 export type GameStatus =
   | "connecting"
   | "idle"
@@ -31,11 +58,13 @@ interface GameContextValue {
   status: GameStatus;
   socketId: string | null;
   game: GameRoom | null;
-  chars: string[] | null;
+  round: GameOneRound | null;
+  roundResult: GameOneRoundResult | null;
   error: string | null;
   joinQueue: () => void;
   leaveQueue: () => void;
   ready: () => void;
+  submitAnswer: (answer: string) => Promise<GameOneAnswerResult>;
   leaveGame: () => void;
 }
 
@@ -46,7 +75,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<GameStatus>("connecting");
   const [socketId, setSocketId] = useState<string | null>(null);
   const [game, setGame] = useState<GameRoom | null>(null);
-  const [chars, setChars] = useState<string[] | null>(null);
+  const [round, setRound] = useState<GameOneRound | null>(null);
+  const [roundResult, setRoundResult] = useState<GameOneRoundResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,7 +91,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const onDisconnect = () => {
       setSocketId(null);
       setGame(null);
-      setChars(null);
+      setRound(null);
+      setRoundResult(null);
       setStatus("connecting");
     };
 
@@ -72,16 +103,26 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     const onMatchFound = (payload: GameRoom) => {
       setGame(payload);
-      setChars(null);
+      setRound(null);
+      setRoundResult(null);
       setError(null);
       setStatus("matched");
       router.push("/game");
     };
 
-    const onGameOneStart = (payload: { char: string[] }) => {
-      setChars(payload.char);
+    const onGameOneStart = (payload: { char: string[]; durationMs: number }) => {
+      setRound({
+        chars: payload.char,
+        durationMs: payload.durationMs,
+        deadline: Date.now() + payload.durationMs,
+      });
+      setRoundResult(null);
       setGame((g) => (g ? { ...g, state: "game-1" } : g));
       setStatus("playing");
+    };
+
+    const onGameOneRoundEnd = (payload: GameOneRoundResult) => {
+      setRoundResult(payload);
     };
 
     const onOpponentDisconnected = () => {
@@ -93,6 +134,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     socket.on("queue_error", onQueueError);
     socket.on("match_found", onMatchFound);
     socket.on("game_one_start", onGameOneStart);
+    socket.on("game_one_round_end", onGameOneRoundEnd);
     socket.on("opponent_disconnected", onOpponentDisconnected);
 
     if (socket.connected) onConnect();
@@ -103,6 +145,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       socket.off("queue_error", onQueueError);
       socket.off("match_found", onMatchFound);
       socket.off("game_one_start", onGameOneStart);
+      socket.off("game_one_round_end", onGameOneRoundEnd);
       socket.off("opponent_disconnected", onOpponentDisconnected);
     };
   }, [router]);
@@ -112,7 +155,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (!socket.connected) return;
     setError(null);
     setGame(null);
-    setChars(null);
+    setRound(null);
+    setRoundResult(null);
     setStatus("searching");
     socket.emit("join_queue");
   }, []);
@@ -131,9 +175,22 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     socket.emit("player_ready");
   }, []);
 
+  const submitAnswer = useCallback(async (answer: string): Promise<GameOneAnswerResult> => {
+    const socket = getSocket();
+    if (!socket.connected) return { status: "rejected", message: "Not connected." };
+    try {
+      return await socket
+        .timeout(ANSWER_TIMEOUT_MS)
+        .emitWithAck("game_one_answer", { answer });
+    } catch {
+      return { status: "rejected", message: "The server did not respond." };
+    }
+  }, []);
+
   const leaveGame = useCallback(() => {
     setGame(null);
-    setChars(null);
+    setRound(null);
+    setRoundResult(null);
     setError(null);
     setStatus("idle");
     router.push("/");
@@ -145,11 +202,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         status,
         socketId,
         game,
-        chars,
+        round,
+        roundResult,
         error,
         joinQueue,
         leaveQueue,
         ready,
+        submitAnswer,
         leaveGame,
       }}
     >

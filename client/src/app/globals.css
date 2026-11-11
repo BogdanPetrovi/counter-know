@@ -7,6 +7,8 @@
   --gold: #ecb365;
   --ink: #f2ecdf;
   --ink-dim: #8fa3b3;
+  --danger: #e5604f;
+  --success: #5fcf98;
 }
 
 @theme inline {
@@ -16,6 +18,8 @@
   --color-gold: var(--gold);
   --color-ink: var(--ink);
   --color-ink-dim: var(--ink-dim);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -186,4 +190,66 @@ body {
   animation: type 0.9s forwards;
   animation-timing-function: var(--steps, steps(20));
   animation-delay: var(--d, 0s);
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  15% {
+    transform: translateX(-9px);
+  }
+  30% {
+    transform: translateX(8px);
+  }
+  45% {
+    transform: translateX(-6px);
+  }
+  60% {
+    transform: translateX(5px);
+  }
+  75% {
+    transform: translateX(-3px);
+  }
+  90% {
+    transform: translateX(1px);
+  }
+}
+
+.shake {
+  animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes confirm-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.025);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.confirm-pop {
+  animation: confirm-pop 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes timer-shrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.timer-bar {
+  transform-origin: left;
+  animation-name: timer-shrink;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+  transition: background-color 0.3s;
 }
