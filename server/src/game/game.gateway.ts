@@ -1,7 +1,7 @@
 import { OnGatewayDisconnect, SubscribeMessage, WebSocketGateway, WebSocketServer } from "@nestjs/websockets";
 import { Server, Socket } from 'socket.io'
 import { QueueService } from "../queue/queue.service.js";
-import { GameService } from "./game.service.js";
+import { GameService, type GameOneAnswerResult } from "./game.service.js";
 
 @WebSocketGateway()
 export class GameGateway implements OnGatewayDisconnect {
@@ -73,9 +73,31 @@ export class GameGateway implements OnGatewayDisconnect {
 
     const bothReady = this.gameService.markReady(roomId, client.id);
     if(bothReady) {
-      const char = this.gameService.startGameOne(roomId);
-      this.server.to(roomId).emit('game_one_start', { char });
+      const round = this.gameService.startGameOne(roomId, (summary) => {
+        this.server.to(roomId).emit('game_one_round_end', summary);
+      });
+      if(round) {
+        this.server.to(roomId).emit('game_one_start', {
+          char: round.letters,
+          durationMs: round.durationMs
+        });
+      }
     }
+  }
+
+  // The return value is sent back as the socket.io acknowledgement.
+  @SubscribeMessage('game_one_answer')
+  handleGameOneAnswer(client: Socket, payload: { answer?: unknown }): GameOneAnswerResult {
+    const roomId = this.gameService.getRoomIdForPlayer(client.id);
+    if(!roomId) {
+      return { status: 'rejected', message: 'You are not in a game.' };
+    }
+
+    if(typeof payload?.answer !== 'string') {
+      return { status: 'rejected', message: 'Answer must be a string.' };
+    }
+
+    return this.gameService.submitGameOneAnswer(roomId, client.id, payload.answer);
   }
 
   handleDisconnect(client: Socket) {
