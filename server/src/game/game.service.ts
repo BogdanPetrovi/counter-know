@@ -49,13 +49,17 @@ export interface GameOnePlayerResult {
   timeMs: number | null
 }
 
+/** Total points per player id for the whole game. Always a full snapshot, never a delta. */
+export type GameScores = Record<string, number>;
+
 export interface GameOneRoundSummary {
   answer: string,
-  results: GameOnePlayerResult[]
+  results: GameOnePlayerResult[],
+  scores: GameScores
 }
 
 export type GameOneAnswerResult =
-  | { status: 'correct', answer: string, result: GameOnePlayerResult }
+  | { status: 'correct', answer: string, result: GameOnePlayerResult, scores: GameScores }
   | { status: 'wrong' }
   | { status: 'rejected', message: string };
 
@@ -200,7 +204,13 @@ export class GameService {
     }
 
     // The player already knows the answer, so it is safe to reveal its real spelling now.
-    return { status: 'correct', answer: round.answer, result: this.playerResult(round, playerId) };
+    // When this solve ended the round, the round end is emitted before this ack, so both carry a full snapshot.
+    return {
+      status: 'correct',
+      answer: round.answer,
+      result: this.playerResult(round, playerId),
+      scores: { ...game.scores }
+    };
   }
 
   private finishGameOneRound(gameId: UUID) {
@@ -215,7 +225,7 @@ export class GameService {
     round.finished = true;
 
     const results = game.players.map((playerId) => this.playerResult(round, playerId));
-    listener?.({ answer: round.answer, results });
+    listener?.({ answer: round.answer, results, scores: { ...game.scores } });
   }
 
   private playerResult(round: GameOneRound, playerId: string): GameOnePlayerResult {

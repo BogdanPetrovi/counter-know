@@ -49,7 +49,15 @@ describe('GameService', () => {
         status: 'correct',
         answer,
         result: { playerId: 'a', solved: true, first: true, points: GAME_ONE_FIRST_POINTS, timeMs: 3_200 },
+        scores: { a: GAME_ONE_FIRST_POINTS, b: 0 },
       });
+    });
+
+    it('sends a score snapshot that does not change when the game scores do', () => {
+      const result = service.submitGameOneAnswer(gameId, 'a', answer);
+      service.submitGameOneAnswer(gameId, 'b', answer);
+
+      expect(result.status === 'correct' && result.scores).toEqual({ a: GAME_ONE_FIRST_POINTS, b: 0 });
     });
 
     it('gives the first solver full points and the second one half', () => {
@@ -93,6 +101,7 @@ describe('GameService', () => {
           { playerId: 'a', solved: true, first: true, points: GAME_ONE_FIRST_POINTS, timeMs: 4_000 },
           { playerId: 'b', solved: true, first: false, points: GAME_ONE_SECOND_POINTS, timeMs: 6_500 },
         ],
+        scores: { a: GAME_ONE_FIRST_POINTS, b: GAME_ONE_SECOND_POINTS },
       });
 
       vi.advanceTimersByTime(GAME_ONE_ROUND_MS);
@@ -112,6 +121,7 @@ describe('GameService', () => {
           { playerId: 'a', solved: true, first: true, points: GAME_ONE_FIRST_POINTS, timeMs: 0 },
           { playerId: 'b', solved: false, first: false, points: 0, timeMs: null },
         ],
+        scores: { a: GAME_ONE_FIRST_POINTS, b: 0 },
       });
     });
 
