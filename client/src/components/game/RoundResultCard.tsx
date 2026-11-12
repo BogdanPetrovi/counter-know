@@ -5,6 +5,7 @@ import type { GameOnePlayerResult, GameOneRound } from "@/context/GameContext";
 import { formatTime } from "@/components/home/formatTime";
 import { delay } from "./animation";
 import { CountdownBar } from "./CountdownBar";
+import { TONE_CLASSES, type PlayerTone } from "./playerTone";
 import { WARN_BELOW_MS } from "./RoundTimer";
 import { useCountdown } from "./useCountdown";
 
@@ -12,26 +13,29 @@ export interface RoundResultCardProps {
   label: string;
   self: boolean;
   side: "left" | "right";
+  /** Same colour as this player's side of the score bar. */
+  tone: PlayerTone;
   result: GameOnePlayerResult | undefined;
   /** The round is still running for this player: show a waiting state until the server ends it. */
   pending?: GameOneRound | null;
   delay: number;
 }
 
-export function RoundResultCard({ label, self, side, result, pending = null, delay: d }: RoundResultCardProps) {
+export function RoundResultCard({ label, self, side, tone, result, pending = null, delay: d }: RoundResultCardProps) {
   const right = side === "right";
+  const t = TONE_CLASSES[tone];
   // A card that starts out waiting animates its result in once the round ends.
   const [startedPending] = useState(pending !== null);
 
   return (
     <div
       className={`${right ? "enter-right" : "enter-left"} relative flex flex-col gap-5 overflow-hidden border p-6 sm:p-8 ${
-        self ? "border-gold bg-navy-800" : "border-navy-700"
-      } ${right ? "sm:items-end sm:text-right" : ""}`}
+        t.border
+      } ${self ? t.tint : ""} ${right ? "sm:items-end sm:text-right" : ""}`}
       style={delay(d)}
       aria-busy={pending !== null}
     >
-      <span className="font-mono text-xs uppercase tracking-[0.3em] text-ink-dim">
+      <span className={`font-mono text-xs uppercase tracking-[0.3em] ${t.text}`}>
         {label}
       </span>
 
@@ -39,7 +43,7 @@ export function RoundResultCard({ label, self, side, result, pending = null, del
         {pending ? (
           <PendingBody round={pending} right={right} />
         ) : (
-          <ResolvedBody result={result} right={right} animate={startedPending} />
+          <ResolvedBody result={result} right={right} animate={startedPending} tone={tone} />
         )}
       </div>
     </div>
@@ -88,10 +92,12 @@ function ResolvedBody({
   result,
   right,
   animate,
+  tone,
 }: {
   result: GameOnePlayerResult | undefined;
   right: boolean;
   animate: boolean;
+  tone: PlayerTone;
 }) {
   const solved = result?.solved ?? false;
   const points = result?.points ?? 0;
@@ -125,7 +131,7 @@ function ResolvedBody({
 
       <span
         className={`font-mono text-4xl font-semibold tabular-nums sm:text-5xl ${
-          points > 0 ? "text-gold" : "text-ink-dim/50"
+          points > 0 ? TONE_CLASSES[tone].text : "text-ink-dim/50"
         }`}
       >
         +{points}

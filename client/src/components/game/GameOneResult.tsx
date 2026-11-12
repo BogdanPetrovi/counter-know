@@ -1,14 +1,19 @@
 import type { GameOnePlayerResult, GameOneRound } from "@/context/GameContext";
 import { delay } from "./animation";
-import { RoundResultCard } from "./RoundResultCard";
+import { toneForIndex } from "./playerTone";
+import { RoundResultCard, type RoundResultCardProps } from "./RoundResultCard";
 
 export interface GameOneResultProps {
   answer: string;
   self: GameOnePlayerResult | undefined;
   /** `null` while the opponent is still playing the round. */
   opponent: GameOnePlayerResult | undefined | null;
+  /** Our position in `game.players`; cards follow the score bar (0 is blue on the left). */
+  selfIndex: number;
   round: GameOneRound;
 }
+
+type CardData = Pick<RoundResultCardProps, "label" | "self" | "result" | "pending">;
 
 function headline(self: GameOnePlayerResult | undefined, opponent: GameOnePlayerResult | undefined | null) {
   if (self?.solved) return self.first ? "You were faster." : "Solved, but second.";
@@ -16,7 +21,16 @@ function headline(self: GameOnePlayerResult | undefined, opponent: GameOnePlayer
   return "Time's up.";
 }
 
-export function GameOneResult({ answer, self, opponent, round }: GameOneResultProps) {
+export function GameOneResult({ answer, self, opponent, selfIndex, round }: GameOneResultProps) {
+  const selfCard: CardData = { label: "You", self: true, result: self };
+  const opponentCard: CardData = {
+    label: "Opponent",
+    self: false,
+    result: opponent ?? undefined,
+    pending: opponent === null ? round : null,
+  };
+  const cards = selfIndex === 0 ? [selfCard, opponentCard] : [opponentCard, selfCard];
+
   return (
     <div>
       <h1
@@ -48,15 +62,15 @@ export function GameOneResult({ answer, self, opponent, round }: GameOneResultPr
       </div>
 
       <div className="mt-7 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
-        <RoundResultCard label="You" self side="left" result={self} delay={1} />
-        <RoundResultCard
-          label="Opponent"
-          self={false}
-          side="right"
-          result={opponent ?? undefined}
-          pending={opponent === null ? round : null}
-          delay={1.2}
-        />
+        {cards.map((card, i) => (
+          <RoundResultCard
+            key={card.label}
+            {...card}
+            side={i === 0 ? "left" : "right"}
+            tone={toneForIndex(i)}
+            delay={1 + i * 0.2}
+          />
+        ))}
       </div>
     </div>
   );

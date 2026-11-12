@@ -9,6 +9,9 @@
   --ink-dim: #8fa3b3;
   --danger: #e5604f;
   --success: #5fcf98;
+  /* Player sides. Tuned for 4.5:1+ on navy-900 / navy-800; red leans rose so it never reads as --danger. */
+  --player-blue: #4f9dff;
+  --player-red: #ff5468;
 }
 
 @theme inline {
@@ -20,6 +23,8 @@
   --color-ink-dim: var(--ink-dim);
   --color-danger: var(--danger);
   --color-success: var(--success);
+  --color-player-blue: var(--player-blue);
+  --color-player-red: var(--player-red);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -235,6 +240,46 @@ body {
 
 .confirm-pop {
   animation: confirm-pop 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Score bar sliding down into place once the round starts */
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.drop-in {
+  animation: drop-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* A score that just changed */
+@keyframes score-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.score-bump {
+  animation: score-bump 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drop-in,
+  .score-bump {
+    animation: none;
+  }
 }
 
 @keyframes timer-shrink {

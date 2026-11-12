@@ -10,11 +10,15 @@ import {
 import { useRouter } from "next/navigation";
 import { getSocket } from "@/lib/socket";
 
+/** Total points per player id, as a full server snapshot. The client never adds points itself. */
+export type GameScores = Record<string, number>;
+
 export interface GameRoom {
   id: string;
   players: string[];
   createdAt: string;
   state: "starting" | "game-1";
+  scores: GameScores;
   message: string;
 }
 
@@ -36,10 +40,11 @@ export interface GameOnePlayerResult {
 export interface GameOneRoundResult {
   answer: string;
   results: GameOnePlayerResult[];
+  scores: GameScores;
 }
 
 export type GameOneAnswerResult =
-  | { status: "correct"; answer: string; result: GameOnePlayerResult }
+  | { status: "correct"; answer: string; result: GameOnePlayerResult; scores: GameScores }
   | { status: "wrong" }
   | { status: "rejected"; message: string };
 
@@ -102,7 +107,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     };
 
     const onMatchFound = (payload: GameRoom) => {
-      setGame(payload);
+      setGame({ ...payload, scores: payload.scores ?? {} });
       setRound(null);
       setRoundResult(null);
       setError(null);
@@ -123,6 +128,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     const onGameOneRoundEnd = (payload: GameOneRoundResult) => {
       setRoundResult(payload);
+      setGame((g) => (g ? { ...g, scores: payload.scores } : g));
     };
 
     const onOpponentDisconnected = () => {
@@ -179,9 +185,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const socket = getSocket();
     if (!socket.connected) return { status: "rejected", message: "Not connected." };
     try {
-      return await socket
+      const res: GameOneAnswerResult = await socket
         .timeout(ANSWER_TIMEOUT_MS)
         .emitWithAck("game_one_answer", { answer });
+      // Our own points show up right away instead of waiting for the round to end.
+      if (res.status === "correct") {
+        setGame((g) => (g ? { ...g, scores: res.scores } : g));
+      }
+      return res;
     } catch {
       return { status: "rejected", message: "The server did not respond." };
     }
