@@ -7,15 +7,28 @@ import { delay } from "@/components/game/animation";
 import { Matchup } from "@/components/game/Matchup";
 import { GameOne } from "@/components/game/GameOne";
 import { ScoreBar } from "@/components/game/ScoreBar";
+import { GameEnd } from "@/components/game/GameEnd";
 
 const READY_AFTER_MS = 4000;
 
 export default function GamePage() {
   const router = useRouter();
-  const { status, game, round, roundResult, socketId, ready, submitAnswer, leaveGame } =
-    useGame();
+  const {
+    status,
+    game,
+    round,
+    roundResult,
+    gameEnd,
+    socketId,
+    ready,
+    submitAnswer,
+    joinQueue,
+    leaveGame,
+  } = useGame();
   // Intro stays mounted until its exit animation finishes, then the round takes its place.
   const [introGone, setIntroGone] = useState(false);
+  // Same hand-off from the last round to the game end screen.
+  const [roundGone, setRoundGone] = useState(false);
 
   useEffect(() => {
     if (!game) router.replace("/");
@@ -33,18 +46,32 @@ export default function GamePage() {
   const waiting = status === "ready";
   const playing = status === "playing" && round !== null;
   const introLeaving = playing && !introGone;
+  const finished = status === "finished" && gameEnd !== null;
+  const roundLeaving = finished && !roundGone;
   const selfId = socketId ?? game.players[0];
   const opponentId = game.players.find((p) => p !== selfId) ?? game.players[1];
-  // The intro already shows the matchup; the bar takes over once the round is on screen.
-  const showScoreBar = introGone && !opponentLeft && round !== null;
+  // The intro already shows the matchup; the bar takes over once the round is on screen
+  // and hands over to the game end screen, which shows the final score itself.
+  const showScoreBar = introGone && !opponentLeft && round !== null && !roundGone;
 
   const onIntroLeft = (e: AnimationEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) setIntroGone(true);
   };
 
+  const onRoundLeft = (e: AnimationEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget) setRoundGone(true);
+  };
+
   return (
     <>
-      {showScoreBar && <ScoreBar players={game.players} selfId={selfId} scores={game.scores} />}
+      {showScoreBar && (
+        <ScoreBar
+          players={game.players}
+          selfId={selfId}
+          scores={game.scores}
+          leaving={roundLeaving}
+        />
+      )}
       <main
         className={`flex flex-1 flex-col px-6 pb-30 sm:px-10 ${showScoreBar ? "pt-12" : "pt-30"}`}
       >
@@ -84,14 +111,26 @@ export default function GamePage() {
             </div>
           )}
 
-          {introGone && !opponentLeft && round && (
-            <GameOne
-              round={round}
-              result={roundResult}
+          {introGone && !opponentLeft && round && !roundGone && (
+            <div className={roundLeaving ? "leave" : undefined} onAnimationEnd={onRoundLeft}>
+              <GameOne
+                round={round}
+                result={roundResult}
+                selfId={selfId}
+                opponentId={opponentId}
+                selfIndex={Math.max(0, game.players.indexOf(selfId))}
+                onSubmit={submitAnswer}
+              />
+            </div>
+          )}
+
+          {roundGone && gameEnd && (
+            <GameEnd
+              players={game.players}
               selfId={selfId}
-              opponentId={opponentId}
-              selfIndex={Math.max(0, game.players.indexOf(selfId))}
-              onSubmit={submitAnswer}
+              result={gameEnd}
+              onPlayAgain={joinQueue}
+              onLeave={leaveGame}
             />
           )}
 

@@ -12,10 +12,12 @@ export interface ScoreBarProps {
   selfId: string;
   /** Server snapshot of the game totals. */
   scores: GameScores;
+  /** Fades out while the game end screen takes over. */
+  leaving?: boolean;
 }
 
 /** Sticky strip under the top bar with both players and the game score. Display only. */
-export function ScoreBar({ players, selfId, scores }: ScoreBarProps) {
+export function ScoreBar({ players, selfId, scores, leaving = false }: ScoreBarProps) {
   const [blueId, redId] = players;
   const blue = scores[blueId] ?? 0;
   const red = scores[redId] ?? 0;
@@ -25,7 +27,7 @@ export function ScoreBar({ players, selfId, scores }: ScoreBarProps) {
   return (
     <section
       aria-label="Scoreboard"
-      className="drop-in sticky top-0 z-20 bg-navy-900/90 px-6 backdrop-blur-sm sm:px-10"
+      className={`${leaving ? "leave" : "drop-in"} sticky top-0 z-20 bg-navy-900/90 px-6 backdrop-blur-sm sm:px-10`}
     >
       <div className="mx-auto grid w-full max-w-3xl grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 py-3 sm:gap-6">
         <ScoreBarPlayer id={blueId} label={label(blueId)} tone={toneForIndex(0)} side="left" delay={0.15} />

@@ -6,6 +6,8 @@ import { PRO_PLAYERS } from '../common/data/pro-players.js';
 export const GAME_ONE_ROUND_MS = 30_000;
 export const GAME_ONE_FIRST_POINTS = 12;
 export const GAME_ONE_SECOND_POINTS = GAME_ONE_FIRST_POINTS / 2;
+/** Pause between the last round result and the game end, so players can read the result first. */
+export const GAME_END_DELAY_MS = 6_000;
 
 export interface GameOneSolve {
   playerId: string,
@@ -63,7 +65,14 @@ export type GameOneAnswerResult =
   | { status: 'wrong' }
   | { status: 'rejected', message: string };
 
+export interface GameEndSummary {
+  /** `null` when both players finish on the same score. */
+  winnerId: string | null,
+  scores: GameScores
+}
+
 type RoundEndListener = (summary: GameOneRoundSummary) => void;
+type GameEndListener = (summary: GameEndSummary) => void;
 
 @Injectable()
 export class GameService {
@@ -71,6 +80,7 @@ export class GameService {
   private userGame = new Map<string, UUID>();
   // The round timer is the only source of truth for when a round ends.
   private roundTimers = new Map<UUID, { timer: NodeJS.Timeout, onEnd: RoundEndListener }>();
+  private endTimers = new Map<UUID, NodeJS.Timeout>();
 
   createGame(player1: string, player2: string): GameRoom {
     const id = randomUUID();
@@ -103,6 +113,7 @@ export class GameService {
 
   removeGame(gameId: UUID) {
     this.clearRoundTimer(gameId);
+    this.clearEndTimer(gameId);
 
     const room = this.games.get(gameId);
     if(room) {
@@ -213,6 +224,45 @@ export class GameService {
     };
   }
 
+  /** Ends the game after `GAME_END_DELAY_MS`. Removing the game first cancels it. */
+  scheduleGameEnd(gameId: UUID, onEnd: GameEndListener) {
+    if(!this.games.has(gameId)) {
+      return;
+    }
+
+    this.clearEndTimer(gameId);
+    const timer = setTimeout(() => {
+      this.endTimers.delete(gameId);
+      const summary = this.endGame(gameId);
+      if(summary) {
+        onEnd(summary);
+      }
+    }, GAME_END_DELAY_MS);
+    this.endTimers.set(gameId, timer);
+  }
+
+  /** Final result of the game. The room is removed, so both players can queue again. */
+  endGame(gameId: UUID): GameEndSummary | undefined {
+    const game = this.games.get(gameId);
+    if(!game) {
+      return undefined;
+    }
+
+    const summary = { winnerId: this.winnerOf(game), scores: { ...game.scores } };
+    this.removeGame(gameId);
+    return summary;
+  }
+
+  private winnerOf(game: GameRoom): string | null {
+    const [first, second] = game.players;
+    const diff = (game.scores[first] ?? 0) - (game.scores[second] ?? 0);
+    if(diff === 0) {
+      return null;
+    }
+
+    return diff > 0 ? first : second;
+  }
+
   private finishGameOneRound(gameId: UUID) {
     const game = this.games.get(gameId);
     const round = this.getCurrentGameOneRound(gameId);
@@ -244,6 +294,14 @@ export class GameService {
     if(entry) {
       clearTimeout(entry.timer);
       this.roundTimers.delete(gameId);
+    }
+  }
+
+  private clearEndTimer(gameId: UUID) {
+    const timer = this.endTimers.get(gameId);
+    if(timer) {
+      clearTimeout(timer);
+      this.endTimers.delete(gameId);
     }
   }
 }

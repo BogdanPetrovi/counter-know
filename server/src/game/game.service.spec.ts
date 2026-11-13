@@ -1,8 +1,10 @@
 import {
+  GAME_END_DELAY_MS,
   GAME_ONE_FIRST_POINTS,
   GAME_ONE_ROUND_MS,
   GAME_ONE_SECOND_POINTS,
   GameService,
+  type GameEndSummary,
   type GameOneRoundSummary,
 } from './game.service.js';
 import type { UUID } from 'crypto';
@@ -137,6 +139,55 @@ describe('GameService', () => {
       vi.advanceTimersByTime(GAME_ONE_ROUND_MS);
 
       expect(onRoundEnd).not.toHaveBeenCalled();
+    });
+
+    describe('game end', () => {
+      let onGameEnd: ReturnType<typeof vi.fn<(summary: GameEndSummary) => void>>;
+
+      beforeEach(() => {
+        onGameEnd = vi.fn<(summary: GameEndSummary) => void>();
+      });
+
+      it('names the player with more points as the winner after the pause', () => {
+        service.submitGameOneAnswer(gameId, 'b', answer);
+        service.submitGameOneAnswer(gameId, 'a', answer);
+        service.scheduleGameEnd(gameId, onGameEnd);
+
+        vi.advanceTimersByTime(GAME_END_DELAY_MS - 1);
+        expect(onGameEnd).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(1);
+        expect(onGameEnd).toHaveBeenCalledTimes(1);
+        expect(onGameEnd).toHaveBeenCalledWith({
+          winnerId: 'b',
+          scores: { a: GAME_ONE_SECOND_POINTS, b: GAME_ONE_FIRST_POINTS },
+        });
+      });
+
+      it('has no winner when both players finish level', () => {
+        vi.advanceTimersByTime(GAME_ONE_ROUND_MS);
+        service.scheduleGameEnd(gameId, onGameEnd);
+        vi.advanceTimersByTime(GAME_END_DELAY_MS);
+
+        expect(onGameEnd).toHaveBeenCalledWith({ winnerId: null, scores: { a: 0, b: 0 } });
+      });
+
+      it('removes the game so both players can queue again', () => {
+        service.scheduleGameEnd(gameId, onGameEnd);
+        vi.advanceTimersByTime(GAME_END_DELAY_MS);
+
+        expect(service.getGame(gameId)).toBeUndefined();
+        expect(service.isInGame('a')).toBe(false);
+        expect(service.isInGame('b')).toBe(false);
+      });
+
+      it('does not end a game that was removed during the pause', () => {
+        service.scheduleGameEnd(gameId, onGameEnd);
+        service.removeGame(gameId);
+        vi.advanceTimersByTime(GAME_END_DELAY_MS);
+
+        expect(onGameEnd).not.toHaveBeenCalled();
+      });
     });
   });
 });

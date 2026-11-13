@@ -75,6 +75,11 @@ export class GameGateway implements OnGatewayDisconnect {
     if(bothReady) {
       const round = this.gameService.startGameOne(roomId, (summary) => {
         this.server.to(roomId).emit('game_one_round_end', summary);
+        // Game one is the whole match for now, so its last round also ends the game.
+        this.gameService.scheduleGameEnd(roomId, (result) => {
+          this.server.to(roomId).emit('game_end', result);
+          this.server.in(roomId).socketsLeave(roomId);
+        });
       });
       if(round) {
         this.server.to(roomId).emit('game_one_start', {

@@ -48,6 +48,13 @@ export type GameOneAnswerResult =
   | { status: "wrong" }
   | { status: "rejected"; message: string };
 
+/** Sent once the last game is over. The server has already closed the room. */
+export interface GameEndResult {
+  /** `null` when both players finish on the same score. */
+  winnerId: string | null;
+  scores: GameScores;
+}
+
 const ANSWER_TIMEOUT_MS = 5000;
 
 export type GameStatus =
@@ -57,6 +64,7 @@ export type GameStatus =
   | "matched"
   | "ready"
   | "playing"
+  | "finished"
   | "opponent_left";
 
 interface GameContextValue {
@@ -65,6 +73,7 @@ interface GameContextValue {
   game: GameRoom | null;
   round: GameOneRound | null;
   roundResult: GameOneRoundResult | null;
+  gameEnd: GameEndResult | null;
   error: string | null;
   joinQueue: () => void;
   leaveQueue: () => void;
@@ -82,6 +91,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [game, setGame] = useState<GameRoom | null>(null);
   const [round, setRound] = useState<GameOneRound | null>(null);
   const [roundResult, setRoundResult] = useState<GameOneRoundResult | null>(null);
+  const [gameEnd, setGameEnd] = useState<GameEndResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -98,6 +108,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setGame(null);
       setRound(null);
       setRoundResult(null);
+      setGameEnd(null);
       setStatus("connecting");
     };
 
@@ -110,6 +121,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setGame({ ...payload, scores: payload.scores ?? {} });
       setRound(null);
       setRoundResult(null);
+      setGameEnd(null);
       setError(null);
       setStatus("matched");
       router.push("/game");
@@ -131,6 +143,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setGame((g) => (g ? { ...g, scores: payload.scores } : g));
     };
 
+    const onGameEnd = (payload: GameEndResult) => {
+      setGameEnd(payload);
+      setGame((g) => (g ? { ...g, scores: payload.scores } : g));
+      setStatus("finished");
+    };
+
     const onOpponentDisconnected = () => {
       setStatus("opponent_left");
     };
@@ -141,6 +159,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     socket.on("match_found", onMatchFound);
     socket.on("game_one_start", onGameOneStart);
     socket.on("game_one_round_end", onGameOneRoundEnd);
+    socket.on("game_end", onGameEnd);
     socket.on("opponent_disconnected", onOpponentDisconnected);
 
     if (socket.connected) onConnect();
@@ -152,6 +171,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       socket.off("match_found", onMatchFound);
       socket.off("game_one_start", onGameOneStart);
       socket.off("game_one_round_end", onGameOneRoundEnd);
+      socket.off("game_end", onGameEnd);
       socket.off("opponent_disconnected", onOpponentDisconnected);
     };
   }, [router]);
@@ -163,6 +183,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setGame(null);
     setRound(null);
     setRoundResult(null);
+    setGameEnd(null);
     setStatus("searching");
     socket.emit("join_queue");
   }, []);
@@ -202,6 +223,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setGame(null);
     setRound(null);
     setRoundResult(null);
+    setGameEnd(null);
     setError(null);
     setStatus("idle");
     router.push("/");
@@ -215,6 +237,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         game,
         round,
         roundResult,
+        gameEnd,
         error,
         joinQueue,
         leaveQueue,
