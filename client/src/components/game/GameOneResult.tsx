@@ -1,6 +1,11 @@
+"use client";
+
+import { useState } from "react";
 import type { GameOnePlayerResult, GameOneRound } from "@/context/GameContext";
 import { delay } from "./animation";
+import { NextUp, type NextUpProps } from "./NextUp";
 import { toneForIndex } from "./playerTone";
+import { roundOf } from "./roundLabel";
 import { RoundResultCard, type RoundResultCardProps } from "./RoundResultCard";
 
 export interface GameOneResultProps {
@@ -11,7 +16,13 @@ export interface GameOneResultProps {
   /** Our position in `game.players`; cards follow the score bar (0 is blue on the left). */
   selfIndex: number;
   round: GameOneRound;
+  /** The break after the round, once the server has ended it. */
+  next: Omit<NextUpProps, "delay"> | null;
 }
+
+// Lands after the result cards on a fresh screen, or shortly after the waiting card resolves.
+const NEXT_AFTER_CARDS = 1.6;
+const NEXT_AFTER_RESOLVE = 0.4;
 
 type CardData = Pick<RoundResultCardProps, "label" | "self" | "result" | "pending">;
 
@@ -21,7 +32,8 @@ function headline(self: GameOnePlayerResult | undefined, opponent: GameOnePlayer
   return "Time's up.";
 }
 
-export function GameOneResult({ answer, self, opponent, selfIndex, round }: GameOneResultProps) {
+export function GameOneResult({ answer, self, opponent, selfIndex, round, next }: GameOneResultProps) {
+  const [mountedWithNext] = useState(next !== null);
   const selfCard: CardData = { label: "You", self: true, result: self };
   const opponentCard: CardData = {
     label: "Opponent",
@@ -44,7 +56,7 @@ export function GameOneResult({ answer, self, opponent, selfIndex, round }: Game
         className="enter mt-3 font-mono text-xs uppercase tracking-[0.3em] text-ink-dim"
         style={delay(0.2)}
       >
-        Round 01 / correct answer
+        {roundOf(round.number, round.total)} / correct answer
       </p>
 
       <div
@@ -72,6 +84,10 @@ export function GameOneResult({ answer, self, opponent, selfIndex, round }: Game
           />
         ))}
       </div>
+
+      {next && (
+        <NextUp {...next} delay={mountedWithNext ? NEXT_AFTER_CARDS : NEXT_AFTER_RESOLVE} />
+      )}
     </div>
   );
 }

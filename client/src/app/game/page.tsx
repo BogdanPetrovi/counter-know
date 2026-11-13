@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useGame } from "@/context/GameContext";
 import { delay } from "@/components/game/animation";
 import { Matchup } from "@/components/game/Matchup";
-import { GameOne } from "@/components/game/GameOne";
+import { GameOneRounds } from "@/components/game/GameOneRounds";
 import { ScoreBar } from "@/components/game/ScoreBar";
 import { GameEnd } from "@/components/game/GameEnd";
 
@@ -113,7 +113,7 @@ export default function GamePage() {
 
           {introGone && !opponentLeft && round && !roundGone && (
             <div className={roundLeaving ? "leave" : undefined} onAnimationEnd={onRoundLeft}>
-              <GameOne
+              <GameOneRounds
                 round={round}
                 result={roundResult}
                 selfId={selfId}

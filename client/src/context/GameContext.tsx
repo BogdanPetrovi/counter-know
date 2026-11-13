@@ -23,6 +23,9 @@ export interface GameRoom {
 }
 
 export interface GameOneRound {
+  /** 1-based. */
+  number: number;
+  total: number;
   chars: string[];
   durationMs: number;
   /** Local `Date.now()` when the server's round timer runs out. Display only. */
@@ -38,9 +41,16 @@ export interface GameOnePlayerResult {
 }
 
 export interface GameOneRoundResult {
+  /** 1-based number of the round this result belongs to. */
+  round: number;
+  totalRounds: number;
   answer: string;
   results: GameOnePlayerResult[];
   scores: GameScores;
+  /** Break until the next round starts, or until the game ends after the last round. */
+  nextInMs: number;
+  /** Local `Date.now()` when that break is over. Display only. */
+  nextAt: number;
 }
 
 export type GameOneAnswerResult =
@@ -127,19 +137,27 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       router.push("/game");
     };
 
-    const onGameOneStart = (payload: { char: string[]; durationMs: number }) => {
+    // The previous round's result is kept: it stays on screen until its exit animation is done.
+    // Consumers match a result to its round by `roundResult.round`.
+    const onGameOneStart = (payload: {
+      round: number;
+      totalRounds: number;
+      char: string[];
+      durationMs: number;
+    }) => {
       setRound({
+        number: payload.round,
+        total: payload.totalRounds,
         chars: payload.char,
         durationMs: payload.durationMs,
         deadline: Date.now() + payload.durationMs,
       });
-      setRoundResult(null);
       setGame((g) => (g ? { ...g, state: "game-1" } : g));
       setStatus("playing");
     };
 
-    const onGameOneRoundEnd = (payload: GameOneRoundResult) => {
-      setRoundResult(payload);
+    const onGameOneRoundEnd = (payload: Omit<GameOneRoundResult, "nextAt">) => {
+      setRoundResult({ ...payload, nextAt: Date.now() + payload.nextInMs });
       setGame((g) => (g ? { ...g, scores: payload.scores } : g));
     };
 

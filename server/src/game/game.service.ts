@@ -3,9 +3,13 @@ import { randomUUID } from 'crypto';
 import type { UUID } from 'crypto';
 import { PRO_PLAYERS } from '../common/data/pro-players.js';
 
+export const GAME_ONE_ROUNDS = 2;
 export const GAME_ONE_ROUND_MS = 30_000;
+export const GAME_ONE_LETTERS = 12;
 export const GAME_ONE_FIRST_POINTS = 12;
 export const GAME_ONE_SECOND_POINTS = GAME_ONE_FIRST_POINTS / 2;
+/** Pause between a round result and the next round, so players can read the result first. */
+export const GAME_ONE_ROUND_BREAK_MS = 6_000;
 /** Pause between the last round result and the game end, so players can read the result first. */
 export const GAME_END_DELAY_MS = 6_000;
 
@@ -39,6 +43,9 @@ export interface GameRoom {
 }
 
 export interface GameOneRoundStart {
+  /** 1-based. */
+  round: number,
+  totalRounds: number,
   letters: string[],
   durationMs: number
 }
@@ -55,9 +62,14 @@ export interface GameOnePlayerResult {
 export type GameScores = Record<string, number>;
 
 export interface GameOneRoundSummary {
+  /** 1-based. */
+  round: number,
+  totalRounds: number,
   answer: string,
   results: GameOnePlayerResult[],
-  scores: GameScores
+  scores: GameScores,
+  /** Pause until the next round starts, or until the game ends after the last round. */
+  nextInMs: number
 }
 
 export type GameOneAnswerResult =
@@ -71,16 +83,24 @@ export interface GameEndSummary {
   scores: GameScores
 }
 
-type RoundEndListener = (summary: GameOneRoundSummary) => void;
 type GameEndListener = (summary: GameEndSummary) => void;
+
+/** The service drives the whole game one timeline; the gateway only relays it to the room. */
+export interface GameOneListeners {
+  onRoundStart: (round: GameOneRoundStart) => void,
+  onRoundEnd: (summary: GameOneRoundSummary) => void,
+  /** Game one is the whole match for now, so its last round also ends the game. */
+  onGameEnd: GameEndListener
+}
 
 @Injectable()
 export class GameService {
   private games = new Map<string, GameRoom>();
   private userGame = new Map<string, UUID>();
   // The round timer is the only source of truth for when a round ends.
-  private roundTimers = new Map<UUID, { timer: NodeJS.Timeout, onEnd: RoundEndListener }>();
-  private endTimers = new Map<UUID, NodeJS.Timeout>();
+  private roundTimers = new Map<UUID, { timer: NodeJS.Timeout, listeners: GameOneListeners }>();
+  // The break before the next round or the game end. A game never has more than one pending.
+  private pauseTimers = new Map<UUID, NodeJS.Timeout>();
 
   createGame(player1: string, player2: string): GameRoom {
     const id = randomUUID();
@@ -113,7 +133,7 @@ export class GameService {
 
   removeGame(gameId: UUID) {
     this.clearRoundTimer(gameId);
-    this.clearEndTimer(gameId);
+    this.clearPauseTimer(gameId);
 
     const room = this.games.get(gameId);
     if(room) {
@@ -136,50 +156,19 @@ export class GameService {
     return false;
   }
 
-  startGameOne(gameId: UUID, onRoundEnd: RoundEndListener): GameOneRoundStart | undefined {
+  /**
+   * Plays all `GAME_ONE_ROUNDS` rounds, with a break after each result, then ends the game.
+   * The first round starts right away. Removing the game stops the timeline at any point.
+   */
+  startGameOne(gameId: UUID, listeners: GameOneListeners) {
     const game = this.games.get(gameId);
     if(!game) {
-      return undefined;
+      return;
     }
+
     game.state = 'game-1';
-
-    const playersArrayLength = PRO_PLAYERS.length;
-    const randomNumber = Math.floor(Math.random() * playersArrayLength);
-    const randomPlayer = PRO_PLAYERS[randomNumber];
-
-    const charArr = [...randomPlayer];
-
-    const randomCharNumber = 12 - charArr.length;
-    const chars = 'abcdefghijklmnopqrstuvwxyz';
-    for (let index = 0; index < randomCharNumber; index++) {
-      const randomIndex = Math.floor(Math.random() * chars.length);
-      charArr.push(chars[randomIndex]);
-    }
-
-    const finalArr = [];
-    for(let index = 0; index < 12; index++) {
-      const randomIndex = Math.floor(Math.random() * charArr.length);
-      const char = charArr.splice(randomIndex, 1)[0];
-      finalArr.push(char.toUpperCase());
-    }
-
-    const startedAt = new Date();
-    game.gameOne = {
-      rounds: [{
-        answer: randomPlayer,
-        letters: finalArr,
-        startedAt,
-        endsAt: new Date(startedAt.getTime() + GAME_ONE_ROUND_MS),
-        solves: [],
-        finished: false
-      }]
-    };
-
-    this.clearRoundTimer(gameId);
-    const timer = setTimeout(() => this.finishGameOneRound(gameId), GAME_ONE_ROUND_MS);
-    this.roundTimers.set(gameId, { timer, onEnd: onRoundEnd });
-
-    return { letters: finalArr, durationMs: GAME_ONE_ROUND_MS };
+    game.gameOne = { rounds: [] };
+    this.startGameOneRound(gameId, listeners);
   }
 
   getCurrentGameOneRound(gameId: UUID): GameOneRound | undefined {
@@ -225,20 +214,13 @@ export class GameService {
   }
 
   /** Ends the game after `GAME_END_DELAY_MS`. Removing the game first cancels it. */
-  scheduleGameEnd(gameId: UUID, onEnd: GameEndListener) {
-    if(!this.games.has(gameId)) {
-      return;
-    }
-
-    this.clearEndTimer(gameId);
-    const timer = setTimeout(() => {
-      this.endTimers.delete(gameId);
+  private scheduleGameEnd(gameId: UUID, onEnd: GameEndListener) {
+    this.schedulePause(gameId, GAME_END_DELAY_MS, () => {
       const summary = this.endGame(gameId);
       if(summary) {
         onEnd(summary);
       }
-    }, GAME_END_DELAY_MS);
-    this.endTimers.set(gameId, timer);
+    });
   }
 
   /** Final result of the game. The room is removed, so both players can queue again. */
@@ -263,19 +245,92 @@ export class GameService {
     return diff > 0 ? first : second;
   }
 
+  private startGameOneRound(gameId: UUID, listeners: GameOneListeners) {
+    const game = this.games.get(gameId);
+    if(!game?.gameOne) {
+      return;
+    }
+
+    const rounds = game.gameOne.rounds;
+    const answer = this.pickAnswer(rounds.map((r) => r.answer));
+    const letters = this.scramble(answer);
+    const startedAt = new Date();
+    rounds.push({
+      answer,
+      letters,
+      startedAt,
+      endsAt: new Date(startedAt.getTime() + GAME_ONE_ROUND_MS),
+      solves: [],
+      finished: false
+    });
+
+    this.clearRoundTimer(gameId);
+    const timer = setTimeout(() => this.finishGameOneRound(gameId), GAME_ONE_ROUND_MS);
+    this.roundTimers.set(gameId, { timer, listeners });
+
+    listeners.onRoundStart({
+      round: rounds.length,
+      totalRounds: GAME_ONE_ROUNDS,
+      letters,
+      durationMs: GAME_ONE_ROUND_MS
+    });
+  }
+
   private finishGameOneRound(gameId: UUID) {
     const game = this.games.get(gameId);
     const round = this.getCurrentGameOneRound(gameId);
-    const listener = this.roundTimers.get(gameId)?.onEnd;
+    const listeners = this.roundTimers.get(gameId)?.listeners;
     this.clearRoundTimer(gameId);
 
-    if(!game || !round || round.finished) {
+    if(!game?.gameOne || !round || round.finished) {
       return;
     }
     round.finished = true;
 
+    if(!listeners) {
+      return;
+    }
+
+    const number = game.gameOne.rounds.length;
+    const last = number >= GAME_ONE_ROUNDS;
     const results = game.players.map((playerId) => this.playerResult(round, playerId));
-    listener?.({ answer: round.answer, results, scores: { ...game.scores } });
+    listeners.onRoundEnd({
+      round: number,
+      totalRounds: GAME_ONE_ROUNDS,
+      answer: round.answer,
+      results,
+      scores: { ...game.scores },
+      nextInMs: last ? GAME_END_DELAY_MS : GAME_ONE_ROUND_BREAK_MS
+    });
+
+    if(last) {
+      this.scheduleGameEnd(gameId, listeners.onGameEnd);
+    } else {
+      this.schedulePause(gameId, GAME_ONE_ROUND_BREAK_MS, () => this.startGameOneRound(gameId, listeners));
+    }
+  }
+
+  /** A random pro player that has not been an answer in this game yet. */
+  private pickAnswer(used: string[]): string {
+    const fresh = PRO_PLAYERS.filter((p) => !used.includes(p));
+    const pool = fresh.length > 0 ? fresh : PRO_PLAYERS;
+    return pool[Math.floor(Math.random() * pool.length)];
+  }
+
+  /** The answer's letters padded with random ones up to `GAME_ONE_LETTERS`, shuffled and upper-cased. */
+  private scramble(answer: string): string[] {
+    const chars = [...answer];
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+    while(chars.length < GAME_ONE_LETTERS) {
+      chars.push(alphabet[Math.floor(Math.random() * alphabet.length)]);
+    }
+
+    const letters: string[] = [];
+    while(chars.length > 0) {
+      const char = chars.splice(Math.floor(Math.random() * chars.length), 1)[0];
+      letters.push(char.toUpperCase());
+    }
+    return letters;
   }
 
   private playerResult(round: GameOneRound, playerId: string): GameOnePlayerResult {
@@ -297,11 +352,25 @@ export class GameService {
     }
   }
 
-  private clearEndTimer(gameId: UUID) {
-    const timer = this.endTimers.get(gameId);
+  /** Runs `fn` after `ms`, unless the game is removed first. Replaces any pause still pending. */
+  private schedulePause(gameId: UUID, ms: number, fn: () => void) {
+    if(!this.games.has(gameId)) {
+      return;
+    }
+
+    this.clearPauseTimer(gameId);
+    const timer = setTimeout(() => {
+      this.pauseTimers.delete(gameId);
+      fn();
+    }, ms);
+    this.pauseTimers.set(gameId, timer);
+  }
+
+  private clearPauseTimer(gameId: UUID) {
+    const timer = this.pauseTimers.get(gameId);
     if(timer) {
       clearTimeout(timer);
-      this.endTimers.delete(gameId);
+      this.pauseTimers.delete(gameId);
     }
   }
 }

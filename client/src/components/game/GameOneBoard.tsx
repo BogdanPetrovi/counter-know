@@ -87,7 +87,13 @@ export function GameOneBoard({ round, over, onSubmit }: GameOneBoardProps) {
       </h1>
 
       <div className="mt-5">
-        <RoundTimer deadline={round.deadline} durationMs={round.durationMs} delay={0.2} />
+        <RoundTimer
+          number={round.number}
+          total={round.total}
+          deadline={round.deadline}
+          durationMs={round.durationMs}
+          delay={0.2}
+        />
       </div>
 
       <div className="mt-7">

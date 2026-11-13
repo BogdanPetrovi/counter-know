@@ -9,11 +9,13 @@ import type {
 } from "@/context/GameContext";
 import { GameOneBoard } from "./GameOneBoard";
 import { GameOneResult } from "./GameOneResult";
+import { nextAfterRound } from "./roundLabel";
 
 const SOLVED_HOLD: CSSProperties = { animationDelay: "0.35s" };
 
 export interface GameOneProps {
   round: GameOneRound;
+  /** Result of this round once the server ends it, `null` until then. */
   result: GameOneRoundResult | null;
   selfId: string;
   opponentId: string;
@@ -57,6 +59,11 @@ export function GameOne({ round, result, selfId, opponentId, selfIndex, onSubmit
         opponent={result.results.find((r) => r.playerId === opponentId)}
         selfIndex={selfIndex}
         round={round}
+        next={{
+          label: nextAfterRound(result.round, result.totalRounds),
+          at: result.nextAt,
+          durationMs: result.nextInMs,
+        }}
       />
     );
   }
@@ -70,6 +77,7 @@ export function GameOne({ round, result, selfId, opponentId, selfIndex, onSubmit
         opponent={null}
         selfIndex={selfIndex}
         round={round}
+        next={null}
       />
     );
   }
